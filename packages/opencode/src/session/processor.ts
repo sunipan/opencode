@@ -17,6 +17,7 @@ import { PermissionNext } from "@/permission/next"
 import { Question } from "@/question"
 import { SessionExhaustion } from "./exhaustion"
 import { notifyModelFallback, notifyModelRecovered, notifyAllModelsExhausted } from "@/cli/cmd/tui/event"
+import { DebugFallback } from "./debug-fallback"
 
 export namespace SessionProcessor {
   const DOOM_LOOP_THRESHOLD = 3
@@ -41,6 +42,11 @@ export namespace SessionProcessor {
     let currentModelIndex = 0
     let currentModel = input.model
 
+    // Initialize debug fallback if enabled
+    if (input.models && input.models.length > 1) {
+      DebugFallback.init(input.models)
+    }
+
     const result = {
       get message() {
         return input.assistantMessage
@@ -54,6 +60,27 @@ export namespace SessionProcessor {
         const shouldBreak = (await Config.get()).experimental?.continue_loop_on_deny !== true
         while (true) {
           try {
+            // Debug: Check if primary model was refreshed
+            if (input.models && input.models.length > 1 && currentModelIndex > 0 && DebugFallback.isEnabled()) {
+              const debugRefresh = DebugFallback.isPrimaryRefreshed()
+              if (debugRefresh.refreshed && debugRefresh.modelId) {
+                const primaryIdx = input.models.findIndex(
+                  (m) => `${m.providerID}/${m.modelID}` === debugRefresh.modelId,
+                )
+                if (primaryIdx >= 0 && primaryIdx < currentModelIndex) {
+                  const oldModelId = SessionExhaustion.modelId(input.models[currentModelIndex])
+                  currentModelIndex = primaryIdx
+                  currentModel = await Provider.getModel(
+                    input.models[primaryIdx].providerID,
+                    input.models[primaryIdx].modelID,
+                  )
+                  streamInput.model = currentModel
+                  notifyModelRecovered(debugRefresh.modelId, oldModelId)
+                  log.info("debug: switched back to refreshed primary", { model: debugRefresh.modelId })
+                }
+              }
+            }
+
             // Check if a better model has refreshed (only if using fallback models)
             if (input.models && input.models.length > 1 && currentModelIndex > 0) {
               const better = SessionExhaustion.checkForBetterModel(currentModelIndex, input.models, exhaustionState)
@@ -74,6 +101,35 @@ export namespace SessionProcessor {
 
             let currentText: MessageV2.TextPart | undefined
             let reasoningMap: Record<string, MessageV2.ReasoningPart> = {}
+
+            // Debug: Check if we should simulate exhaustion
+            if (input.models && input.models.length > 1 && DebugFallback.isEnabled()) {
+              const currentModelId = SessionExhaustion.modelId(input.models[currentModelIndex])
+              if (DebugFallback.shouldExhaust(currentModelId)) {
+                const result = SessionExhaustion.handleExhaustionError(
+                  currentModelIndex,
+                  input.models,
+                  exhaustionState,
+                  new Error(`[DEBUG] Simulated exhaustion for ${currentModelId}`),
+                )
+                exhaustionState = result.state
+
+                if ("error" in result) {
+                  notifyAllModelsExhausted(result.models)
+                  throw new Error(`All models exhausted: ${result.models.join(", ")}`)
+                }
+
+                const oldModelId = currentModelId
+                const newModelId = SessionExhaustion.modelId(result.nextModel)
+                currentModelIndex = result.nextIndex
+                currentModel = await Provider.getModel(result.nextModel.providerID, result.nextModel.modelID)
+                streamInput.model = currentModel
+                notifyModelFallback(oldModelId, newModelId, result.reason)
+                attempt = 0
+                log.info("debug fallback triggered", { from: oldModelId, to: newModelId })
+              }
+            }
+
             const stream = await LLM.stream(streamInput)
 
             for await (const value of stream.fullStream) {
@@ -359,6 +415,12 @@ export namespace SessionProcessor {
                   continue
               }
               if (needsCompaction) break
+            }
+
+            // Debug: Consume credit after successful call
+            if (input.models && input.models.length > 1 && DebugFallback.isEnabled()) {
+              const currentModelId = SessionExhaustion.modelId(input.models[currentModelIndex])
+              DebugFallback.consumeCredit(currentModelId)
             }
           } catch (e: any) {
             log.error("process", {

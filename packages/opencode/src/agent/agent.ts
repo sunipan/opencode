@@ -16,6 +16,12 @@ import { mergeDeep, pipe, sortBy, values } from "remeda"
 import { Global } from "@/global"
 import path from "path"
 
+export interface ModelInfo {
+  providerID: string
+  modelID: string
+  refreshAfter?: number // milliseconds, undefined = manual only
+}
+
 export namespace Agent {
   export const Info = z
     .object({
@@ -34,6 +40,15 @@ export namespace Agent {
           providerID: z.string(),
         })
         .optional(),
+      models: z
+        .array(
+          z.object({
+            providerID: z.string(),
+            modelID: z.string(),
+            refreshAfter: z.number().optional(),
+          }),
+        )
+        .optional(),
       prompt: z.string().optional(),
       options: z.record(z.string(), z.any()),
       steps: z.number().int().positive().optional(),
@@ -42,6 +57,27 @@ export namespace Agent {
       ref: "Agent",
     })
   export type Info = z.infer<typeof Info>
+
+  export function normalizeModels(
+    modelConfig: string | Array<string | { id: string; refreshAfter?: string }> | undefined,
+  ): ModelInfo[] | undefined {
+    if (!modelConfig) return undefined
+
+    // Normalize to array
+    const entries = typeof modelConfig === "string" ? [modelConfig] : modelConfig
+
+    return entries.map((entry) => {
+      const id = typeof entry === "string" ? entry : entry.id
+      const refreshAfter = typeof entry === "string" ? undefined : entry.refreshAfter
+      const { providerID, modelID } = Provider.parseModel(id)
+
+      return {
+        providerID,
+        modelID,
+        refreshAfter: refreshAfter ? Config.parseDuration(refreshAfter) : undefined,
+      }
+    })
+  }
 
   const state = Instance.state(async () => {
     const cfg = await Config.get()
@@ -208,7 +244,13 @@ export namespace Agent {
           options: {},
           native: false,
         }
-      if (value.model) item.model = Provider.parseModel(value.model)
+      if (value.model) {
+        item.models = normalizeModels(value.model)
+        // Keep backward compatibility with single model field
+        if (typeof value.model === "string") {
+          item.model = Provider.parseModel(value.model)
+        }
+      }
       item.prompt = value.prompt ?? item.prompt
       item.description = value.description ?? item.description
       item.temperature = value.temperature ?? item.temperature

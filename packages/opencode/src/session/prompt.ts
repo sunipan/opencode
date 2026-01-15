@@ -543,6 +543,7 @@ export namespace SessionPrompt {
         })) as MessageV2.Assistant,
         sessionID: sessionID,
         model,
+        models: agent.models,
         abort,
       })
 

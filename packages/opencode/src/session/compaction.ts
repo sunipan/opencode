@@ -130,6 +130,7 @@ export namespace SessionCompaction {
       assistantMessage: msg,
       sessionID: input.sessionID,
       model,
+      models: agent.models,
       abort: input.abort,
     })
     // Allow plugins to inject context or replace compaction prompt

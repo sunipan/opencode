@@ -9,12 +9,14 @@ import { Bus } from "@/bus"
 import { SessionRetry } from "./retry"
 import { SessionStatus } from "./status"
 import { Plugin } from "@/plugin"
-import type { Provider } from "@/provider/provider"
+import { Provider } from "@/provider/provider"
 import { LLM } from "./llm"
 import { Config } from "@/config/config"
 import { SessionCompaction } from "./compaction"
 import { PermissionNext } from "@/permission/next"
 import { Question } from "@/question"
+import { SessionExhaustion } from "./exhaustion"
+import { notifyModelFallback, notifyModelRecovered, notifyAllModelsExhausted } from "@/cli/cmd/tui/event"
 
 export namespace SessionProcessor {
   const DOOM_LOOP_THRESHOLD = 3
@@ -27,6 +29,7 @@ export namespace SessionProcessor {
     assistantMessage: MessageV2.Assistant
     sessionID: string
     model: Provider.Model
+    models?: Agent.ModelInfo[]
     abort: AbortSignal
   }) {
     const toolcalls: Record<string, MessageV2.ToolPart> = {}
@@ -34,6 +37,9 @@ export namespace SessionProcessor {
     let blocked = false
     let attempt = 0
     let needsCompaction = false
+    let exhaustionState = SessionExhaustion.createExhaustionState()
+    let currentModelIndex = 0
+    let currentModel = input.model
 
     const result = {
       get message() {
@@ -48,6 +54,24 @@ export namespace SessionProcessor {
         const shouldBreak = (await Config.get()).experimental?.continue_loop_on_deny !== true
         while (true) {
           try {
+            // Check if a better model has refreshed (only if using fallback models)
+            if (input.models && input.models.length > 1 && currentModelIndex > 0) {
+              const better = SessionExhaustion.checkForBetterModel(currentModelIndex, input.models, exhaustionState)
+              if (better) {
+                const oldModelId = SessionExhaustion.modelId(input.models[currentModelIndex])
+                const newModelId = SessionExhaustion.modelId(better.result.switchTo)
+                exhaustionState = better.state
+                currentModelIndex = better.result.switchToIndex
+                currentModel = await Provider.getModel(
+                  better.result.switchTo.providerID,
+                  better.result.switchTo.modelID,
+                )
+                streamInput.model = currentModel
+                notifyModelRecovered(newModelId, oldModelId)
+                log.info("switched to better model", { from: oldModelId, to: newModelId })
+              }
+            }
+
             let currentText: MessageV2.TextPart | undefined
             let reasoningMap: Record<string, MessageV2.ReasoningPart> = {}
             const stream = await LLM.stream(streamInput)
@@ -341,7 +365,44 @@ export namespace SessionProcessor {
               error: e,
               stack: JSON.stringify(e.stack),
             })
-            const error = MessageV2.fromError(e, { providerID: input.model.providerID })
+            const error = MessageV2.fromError(e, { providerID: currentModel.providerID })
+
+            // Check if this is an exhaustion error and we have fallback models
+            if (Provider.isExhaustionError(e) && input.models && input.models.length > 1) {
+              const result = SessionExhaustion.handleExhaustionError(
+                currentModelIndex,
+                input.models,
+                exhaustionState,
+                e,
+              )
+              exhaustionState = result.state
+
+              if ("error" in result) {
+                // All models exhausted
+                notifyAllModelsExhausted(result.models)
+                input.assistantMessage.error = error
+                Bus.publish(Session.Event.Error, {
+                  sessionID: input.assistantMessage.sessionID,
+                  error: input.assistantMessage.error,
+                })
+                break
+              }
+
+              // Switch to fallback model
+              const oldModelId = SessionExhaustion.modelId(input.models[currentModelIndex])
+              const newModelId = SessionExhaustion.modelId(result.nextModel)
+              currentModelIndex = result.nextIndex
+              currentModel = await Provider.getModel(result.nextModel.providerID, result.nextModel.modelID)
+              streamInput.model = currentModel
+              notifyModelFallback(oldModelId, newModelId, result.reason)
+              log.info("fallback to next model", { from: oldModelId, to: newModelId, reason: result.reason })
+
+              // Reset attempt counter for new model
+              attempt = 0
+              continue
+            }
+
+            // Check for retryable errors (transient issues)
             const retry = SessionRetry.retryable(error)
             if (retry !== undefined) {
               attempt++
@@ -355,6 +416,8 @@ export namespace SessionProcessor {
               await SessionRetry.sleep(delay, input.abort).catch(() => {})
               continue
             }
+
+            // Non-retryable error
             input.assistantMessage.error = error
             Bus.publish(Session.Event.Error, {
               sessionID: input.assistantMessage.sessionID,

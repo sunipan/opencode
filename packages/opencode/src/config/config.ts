@@ -543,9 +543,33 @@ export namespace Config {
   })
   export type Command = z.infer<typeof Command>
 
+  // Duration parser helper
+  export function parseDuration(duration: string): number {
+    const match = duration.match(/^(\d+)(ms|s|m|h|d)$/)
+    if (!match) throw new Error(`Invalid duration: ${duration}`)
+    const [, value, unit] = match
+    const multipliers: Record<string, number> = {
+      ms: 1,
+      s: 1000,
+      m: 60 * 1000,
+      h: 60 * 60 * 1000,
+      d: 24 * 60 * 60 * 1000,
+    }
+    return parseInt(value) * multipliers[unit]
+  }
+
+  // Model entry - can be string or object with id and refreshAfter
+  const ModelEntry = z.union([
+    z.string(),
+    z.object({
+      id: z.string(),
+      refreshAfter: z.string().optional(),
+    }),
+  ])
+
   export const Agent = z
     .object({
-      model: z.string().optional(),
+      model: z.union([z.string(), z.array(ModelEntry)]).optional(),
       temperature: z.number().optional(),
       top_p: z.number().optional(),
       prompt: z.string().optional(),

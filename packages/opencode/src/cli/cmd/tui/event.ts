@@ -43,4 +43,56 @@ export const TuiEvent = {
       sessionID: z.string().regex(/^ses/).describe("Session ID to navigate to"),
     }),
   ),
+  ModelFallback: BusEvent.define(
+    "tui.model.fallback",
+    z.object({
+      from: z.string().describe("Model that was exhausted"),
+      to: z.string().describe("Fallback model now in use"),
+      reason: z.string().describe("Why original was exhausted"),
+    }),
+  ),
+  ModelRecovered: BusEvent.define(
+    "tui.model.recovered",
+    z.object({
+      model: z.string().describe("Model that's available again"),
+      from: z.string().describe("Model we were using before"),
+    }),
+  ),
+  AllModelsExhausted: BusEvent.define(
+    "tui.model.all_exhausted",
+    z.object({
+      models: z.array(z.string()).describe("List of exhausted models"),
+    }),
+  ),
+}
+
+// Helper functions to publish model events with toast notifications
+export function notifyModelFallback(from: string, to: string, reason: string) {
+  Bus.publish(TuiEvent.ModelFallback, { from, to, reason })
+  Bus.publish(TuiEvent.ToastShow, {
+    title: "Model Fallback",
+    message: `⚠️ ${from} exhausted (${reason}), using ${to}`,
+    variant: "warning",
+    duration: 6000,
+  })
+}
+
+export function notifyModelRecovered(model: string, from: string) {
+  Bus.publish(TuiEvent.ModelRecovered, { model, from })
+  Bus.publish(TuiEvent.ToastShow, {
+    title: "Model Available",
+    message: `✓ ${model} available again, switching back`,
+    variant: "success",
+    duration: 5000,
+  })
+}
+
+export function notifyAllModelsExhausted(models: string[]) {
+  Bus.publish(TuiEvent.AllModelsExhausted, { models })
+  Bus.publish(TuiEvent.ToastShow, {
+    title: "All Models Exhausted",
+    message: `❌ No models available: ${models.join(", ")}`,
+    variant: "error",
+    duration: 10000,
+  })
 }

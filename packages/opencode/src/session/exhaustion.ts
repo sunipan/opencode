@@ -186,6 +186,73 @@ export namespace SessionExhaustion {
     return updated
   }
 
+  // Clear exhausted status for all models that have refreshed
+  export function clearAllRefreshed(state: Info): {
+    state: Info
+    cleared: string[]
+  } {
+    const refreshed = getRefreshedModels(state)
+    let newState = state
+
+    for (const id of refreshed) {
+      newState = clearExhausted(newState, id)
+    }
+
+    return { state: newState, cleared: refreshed }
+  }
+
+  // Result type for checkForBetterModel
+  export interface ModelSwitchResult {
+    switchTo: Agent.ModelInfo
+    switchToIndex: number
+    clearedModels: string[] // Models that were cleared (for UI notification)
+  }
+
+  // Check if any higher-priority model has refreshed and is available again
+  export function checkForBetterModel(
+    currentIndex: number,
+    models: Agent.ModelInfo[],
+    state: Info,
+  ): { result: ModelSwitchResult; state: Info } | null {
+    // If already using primary (index 0), no better model exists
+    if (currentIndex === 0) return null
+
+    const cleared: string[] = []
+    let newState = state
+
+    // Check models with index < currentIndex (higher priority)
+    for (let i = 0; i < currentIndex; i++) {
+      const model = models[i]
+      const id = modelId(model)
+
+      // Check if this model has refreshed
+      if (hasRefreshed(newState, id)) {
+        // Clear its exhausted status
+        newState = clearExhausted(newState, id)
+        cleared.push(id)
+      }
+    }
+
+    // If any models were cleared, try to select the best one
+    if (cleared.length === 0) return null
+
+    // Find the highest priority (lowest index) that's now available
+    const result = selectModel(models, newState)
+
+    // If still no better model or same/worse, don't switch
+    if ("error" in result) return null
+    if (result.index >= currentIndex) return null
+
+    return {
+      result: {
+        switchTo: result.model,
+        switchToIndex: result.index,
+        clearedModels: cleared,
+      },
+      state: newState,
+    }
+  }
+
   // Helper to get model ID string
   export function modelId(model: Agent.ModelInfo): string {
     return `${model.providerID}/${model.modelID}`

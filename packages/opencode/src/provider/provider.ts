@@ -1199,4 +1199,123 @@ export namespace Provider {
       providerID: z.string(),
     }),
   )
+
+  /**
+   * Detect if error indicates model exhaustion (quota exceeded, daily limits)
+   * vs transient errors (temporary rate limits).
+   * Exhaustion = model is depleted, need to switch to fallback
+   */
+  export function isExhaustionError(error: unknown): boolean {
+    // Handle MessageV2.APIError
+    if (typeof error === "object" && error !== null && "name" in error && error.name === "APIError") {
+      const apiError = error as any
+      const message = apiError.data?.message ?? ""
+      const statusCode = apiError.data?.statusCode
+      const responseBody = apiError.data?.responseBody ?? ""
+
+      // HTTP 402 Payment Required
+      if (statusCode === 402) return true
+
+      const combined = `${message} ${responseBody}`.toLowerCase()
+
+      // Generic exhaustion patterns
+      if (combined.includes("subscription")) return true
+      if (combined.includes("billing")) return true
+      if (combined.includes("upgrade")) return true
+      if (combined.includes("exceeded")) return true
+
+      // Anthropic patterns
+      if (combined.includes("exceed") && combined.includes("plan")) return true
+      if (combined.includes("exceed") && combined.includes("limit")) return true
+      if (combined.includes("quota")) return true
+      if (statusCode === 429 && (combined.includes("daily") || combined.includes("monthly"))) return true
+
+      // Gemini patterns
+      if (combined.includes("resource exhausted")) return true
+      if (combined.includes("daily limit")) return true
+
+      // OpenAI patterns
+      if (combined.includes("insufficient_quota")) return true
+
+      return false
+    }
+
+    // Handle plain Error objects
+    if (error instanceof Error) {
+      const message = error.message.toLowerCase()
+      if (message.includes("quota")) return true
+      if (message.includes("billing")) return true
+      if (message.includes("subscription")) return true
+      if (message.includes("insufficient_quota")) return true
+      if (message.includes("exceeded")) return true
+      return false
+    }
+
+    // Handle response objects with status codes
+    if (typeof error === "object" && error !== null) {
+      const obj = error as any
+      if (obj.statusCode === 402 || obj.status === 402) return true
+
+      const message = (obj.message ?? obj.error?.message ?? "").toLowerCase()
+      if (message.includes("quota")) return true
+      if (message.includes("billing")) return true
+      if (message.includes("subscription")) return true
+      if (message.includes("insufficient_quota")) return true
+      if (message.includes("exceeded")) return true
+    }
+
+    return false
+  }
+
+  /**
+   * Get human-readable reason for exhaustion
+   */
+  export function getExhaustionReason(error: unknown): string | undefined {
+    if (!isExhaustionError(error)) return undefined
+
+    // Handle MessageV2.APIError
+    if (typeof error === "object" && error !== null && "name" in error && error.name === "APIError") {
+      const apiError = error as any
+      const message = apiError.data?.message ?? ""
+      const statusCode = apiError.data?.statusCode
+      const responseBody = apiError.data?.responseBody ?? ""
+
+      if (statusCode === 402) return "Payment required"
+
+      const combined = `${message} ${responseBody}`.toLowerCase()
+
+      if (combined.includes("insufficient_quota")) return "Insufficient quota"
+      if (combined.includes("quota") && combined.includes("exceeded")) return "Quota exceeded"
+      if (combined.includes("daily limit")) return "Daily limit reached"
+      if (combined.includes("monthly") && combined.includes("limit")) return "Monthly limit reached"
+      if (combined.includes("billing")) return "Billing issue"
+      if (combined.includes("subscription")) return "Subscription issue"
+      if (combined.includes("resource exhausted")) return "Resource exhausted"
+
+      return "Model quota exceeded"
+    }
+
+    // Handle plain Error objects
+    if (error instanceof Error) {
+      const message = error.message.toLowerCase()
+      if (message.includes("insufficient_quota")) return "Insufficient quota"
+      if (message.includes("quota")) return "Quota exceeded"
+      if (message.includes("billing")) return "Billing issue"
+      if (message.includes("subscription")) return "Subscription issue"
+      return "Model quota exceeded"
+    }
+
+    // Handle generic objects
+    if (typeof error === "object" && error !== null) {
+      const obj = error as any
+      if (obj.statusCode === 402 || obj.status === 402) return "Payment required"
+
+      const message = (obj.message ?? obj.error?.message ?? "").toLowerCase()
+      if (message.includes("quota")) return "Quota exceeded"
+      if (message.includes("billing")) return "Billing issue"
+      if (message.includes("subscription")) return "Subscription issue"
+    }
+
+    return "Model quota exceeded"
+  }
 }

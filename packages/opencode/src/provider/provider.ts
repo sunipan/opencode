@@ -1206,6 +1206,9 @@ export namespace Provider {
    * Exhaustion = model is depleted, need to switch to fallback
    */
   export function isExhaustionError(error: unknown): boolean {
+    // Debug: simulate exhaustion for testing fallback system
+    if (Flag.OPENCODE_SIMULATE_EXHAUSTION) return true
+
     // Handle MessageV2.APIError
     if (typeof error === "object" && error !== null && "name" in error && error.name === "APIError") {
       const apiError = error as any

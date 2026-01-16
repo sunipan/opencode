@@ -16,13 +16,12 @@ import { mergeDeep, pipe, sortBy, values } from "remeda"
 import { Global } from "@/global"
 import path from "path"
 
-export interface ModelInfo {
-  providerID: string
-  modelID: string
-  refreshAfter?: number // milliseconds, undefined = manual only
-}
-
 export namespace Agent {
+  export interface ModelInfo {
+    providerID: string
+    modelID: string
+    refreshAfter?: number // milliseconds, undefined = manual only
+  }
   export const Info = z
     .object({
       name: z.string(),
@@ -58,24 +57,68 @@ export namespace Agent {
     })
   export type Info = z.infer<typeof Info>
 
+  function validateModelId(id: string, agentName?: string, index?: number): void {
+    if (!id || !id.includes("/")) {
+      const location = index !== undefined ? `model[${index}]` : "model"
+      throw new Error(
+        `Agent "${agentName ?? "unknown"}" ${location}: invalid model ID "${id}". ` +
+          `Must be in "provider/model" format (e.g., "anthropic/claude-sonnet-4-5")`,
+      )
+    }
+
+    const [provider, ...rest] = id.split("/")
+    const modelId = rest.join("/")
+
+    if (!provider.trim() || !modelId.trim()) {
+      const location = index !== undefined ? `model[${index}]` : "model"
+      throw new Error(
+        `Agent "${agentName ?? "unknown"}" ${location}: invalid model ID "${id}". ` +
+          `Must be in "provider/model" format (e.g., "anthropic/claude-sonnet-4-5")`,
+      )
+    }
+  }
+
   export function normalizeModels(
     modelConfig: string | Array<string | { id: string; refreshAfter?: string }> | undefined,
-  ): ModelInfo[] | undefined {
+    agentName?: string,
+  ): Agent.ModelInfo[] | undefined {
     if (!modelConfig) return undefined
 
-    // Normalize to array
-    const entries = typeof modelConfig === "string" ? [modelConfig] : modelConfig
+    // Handle single string
+    if (typeof modelConfig === "string") {
+      validateModelId(modelConfig, agentName)
+      const { providerID, modelID } = Provider.parseModel(modelConfig)
+      return [{ providerID, modelID, refreshAfter: undefined }]
+    }
 
-    return entries.map((entry) => {
+    // Handle array
+    if (modelConfig.length === 0) {
+      console.warn(`[config] Agent "${agentName ?? "unknown"}": empty model list, no fallbacks configured`)
+      return undefined
+    }
+
+    return modelConfig.map((entry, index) => {
       const id = typeof entry === "string" ? entry : entry.id
-      const refreshAfter = typeof entry === "string" ? undefined : entry.refreshAfter
-      const { providerID, modelID } = Provider.parseModel(id)
+      const refreshAfterStr = typeof entry === "string" ? undefined : entry.refreshAfter
 
-      return {
-        providerID,
-        modelID,
-        refreshAfter: refreshAfter ? Config.parseDuration(refreshAfter) : undefined,
+      // Validate model ID format
+      validateModelId(id, agentName, index)
+
+      // Parse and validate refreshAfter
+      let refreshAfter: number | undefined
+      if (refreshAfterStr) {
+        try {
+          refreshAfter = Config.parseDuration(refreshAfterStr)
+        } catch (e) {
+          throw new Error(
+            `Agent "${agentName ?? "unknown"}" model[${index}]: invalid refreshAfter "${refreshAfterStr}". ` +
+              `Use formats like "5h", "24h", "30m", "1d"`,
+          )
+        }
       }
+
+      const { providerID, modelID } = Provider.parseModel(id)
+      return { providerID, modelID, refreshAfter }
     })
   }
 
@@ -245,9 +288,10 @@ export namespace Agent {
           native: false,
         }
       if (value.model) {
-        item.models = normalizeModels(value.model)
+        item.models = normalizeModels(value.model, key)
         // Keep backward compatibility with single model field
         if (typeof value.model === "string") {
+          validateModelId(value.model, key)
           item.model = Provider.parseModel(value.model)
         }
       }

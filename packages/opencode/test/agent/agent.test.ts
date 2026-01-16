@@ -512,3 +512,138 @@ test("explicit Truncate.DIR deny is respected", async () => {
     },
   })
 })
+
+test("invalid model ID without slash throws error", async () => {
+  await using tmp = await tmpdir({
+    config: {
+      agent: {
+        build: {
+          model: "invalid-model-id",
+        },
+      },
+    },
+  })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      await expect(Agent.get("build")).rejects.toThrow(/invalid model ID "invalid-model-id"/)
+      await expect(Agent.get("build")).rejects.toThrow(/Must be in "provider\/model" format/)
+    },
+  })
+})
+
+test("invalid model ID with empty provider throws error", async () => {
+  await using tmp = await tmpdir({
+    config: {
+      agent: {
+        build: {
+          model: "/model-name",
+        },
+      },
+    },
+  })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      await expect(Agent.get("build")).rejects.toThrow(/invalid model ID "\/model-name"/)
+    },
+  })
+})
+
+test("invalid model ID with empty model name throws error", async () => {
+  await using tmp = await tmpdir({
+    config: {
+      agent: {
+        build: {
+          model: "provider/",
+        },
+      },
+    },
+  })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      await expect(Agent.get("build")).rejects.toThrow(/invalid model ID "provider\/"/)
+    },
+  })
+})
+
+test("invalid refreshAfter format throws error", async () => {
+  await using tmp = await tmpdir({
+    config: {
+      agent: {
+        build: {
+          model: [{ id: "anthropic/claude-3", refreshAfter: "invalid" }],
+        },
+      },
+    },
+  })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      await expect(Agent.get("build")).rejects.toThrow(/invalid refreshAfter "invalid"/)
+      await expect(Agent.get("build")).rejects.toThrow(/Use formats like "5h", "24h", "30m", "1d"/)
+    },
+  })
+})
+
+test("valid model array with refreshAfter works", async () => {
+  await using tmp = await tmpdir({
+    config: {
+      agent: {
+        build: {
+          model: [
+            { id: "anthropic/claude-3", refreshAfter: "5h" },
+            { id: "openai/gpt-4", refreshAfter: "24h" },
+            "google/gemini-pro",
+          ],
+        },
+      },
+    },
+  })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const build = await Agent.get("build")
+      expect(build?.models).toBeDefined()
+      expect(build?.models?.length).toBe(3)
+      expect(build?.models?.[0].providerID).toBe("anthropic")
+      expect(build?.models?.[0].modelID).toBe("claude-3")
+      expect(build?.models?.[0].refreshAfter).toBe(5 * 60 * 60 * 1000) // 5 hours in ms
+      expect(build?.models?.[1].providerID).toBe("openai")
+      expect(build?.models?.[1].modelID).toBe("gpt-4")
+      expect(build?.models?.[1].refreshAfter).toBe(24 * 60 * 60 * 1000) // 24 hours in ms
+      expect(build?.models?.[2].providerID).toBe("google")
+      expect(build?.models?.[2].modelID).toBe("gemini-pro")
+      expect(build?.models?.[2].refreshAfter).toBeUndefined()
+    },
+  })
+})
+
+test("empty model array shows warning", async () => {
+  const warnings: string[] = []
+  const originalWarn = console.warn
+  console.warn = (...args: any[]) => warnings.push(args.join(" "))
+
+  try {
+    await using tmp = await tmpdir({
+      config: {
+        agent: {
+          build: {
+            model: [],
+          },
+        },
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const build = await Agent.get("build")
+        expect(build?.models).toBeUndefined()
+        expect(warnings.some((w) => w.includes("empty model list"))).toBe(true)
+      },
+    })
+  } finally {
+    console.warn = originalWarn
+  }
+})

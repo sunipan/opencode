@@ -11,11 +11,11 @@
 
 export namespace DebugFallback {
   interface State {
-    enabled: boolean;
-    credits: Map<string, number>;
-    totalCalls: number;
-    primaryModel: string | null;
-    refreshAfterCalls: number;
+    enabled: boolean
+    credits: Map<string, number>
+    totalCalls: number
+    primaryModel: string | null
+    refreshAfterCalls: number
   }
 
   const state: State = {
@@ -24,88 +24,84 @@ export namespace DebugFallback {
     totalCalls: 0,
     primaryModel: null,
     refreshAfterCalls: 3,
-  };
-
-  export function isEnabled(): boolean {
-    return (
-      process.env.OPENCODE_DEBUG_FALLBACK === "true" ||
-      process.env.OPENCODE_DEBUG_FALLBACK === "1"
-    );
   }
 
-  export function init(
-    models: Array<{ providerID: string; modelID: string }>,
-  ): void {
-    if (!isEnabled()) return;
+  export function isEnabled(): boolean {
+    return process.env.OPENCODE_DEBUG_FALLBACK === "true" || process.env.OPENCODE_DEBUG_FALLBACK === "1"
+  }
 
-    state.enabled = true;
-    state.credits.clear();
-    state.totalCalls = 0;
-    state.primaryModel = null;
+  export function init(models: Array<{ providerID: string; modelID: string }>): void {
+    if (!isEnabled()) return
+
+    state.enabled = true
+    state.credits.clear()
+    state.totalCalls = 0
+    state.primaryModel = null
 
     for (const model of models) {
-      const id = `${model.providerID}/${model.modelID}`;
-      state.credits.set(id, 1);
+      const id = `${model.providerID}/${model.modelID}`
+      state.credits.set(id, 1)
       if (!state.primaryModel) {
-        state.primaryModel = id;
+        state.primaryModel = id
       }
     }
 
-    console.log(
-      `[DEBUG FALLBACK] Initialized: ${models.length} models, 1 credit each`,
-    );
-    console.log(`[DEBUG FALLBACK] Credits:`, Object.fromEntries(state.credits));
+    console.log(`[DEBUG FALLBACK] Initialized: ${models.length} models, 1 credit each`)
+    console.log(`[DEBUG FALLBACK] Credits:`, Object.fromEntries(state.credits))
   }
 
   export function shouldExhaust(modelId: string): boolean {
-    if (!state.enabled) return false;
-    const credits = state.credits.get(modelId) ?? 0;
-    const exhaust = credits <= 0;
+    if (!state.enabled) return false
+    const credits = state.credits.get(modelId) ?? 0
+    const exhaust = credits <= 0
     if (exhaust) {
-      console.log(
-        `[DEBUG FALLBACK] ${modelId} has 0 credits → simulating exhaustion`,
-      );
+      console.log(`[DEBUG FALLBACK] ${modelId} has 0 credits → simulating exhaustion`)
     }
-    return exhaust;
+    return exhaust
   }
 
   export function consumeCredit(modelId: string): void {
-    if (!state.enabled) return;
+    if (!state.enabled) return
 
-    const current = state.credits.get(modelId) ?? 0;
-    const next = Math.max(0, current - 1);
-    state.credits.set(modelId, next);
-    state.totalCalls++;
+    const current = state.credits.get(modelId) ?? 0
+    const next = Math.max(0, current - 1)
+    state.credits.set(modelId, next)
+    state.totalCalls++
 
-    console.log(
-      `[DEBUG FALLBACK] ${modelId}: credit ${current}→${next}, total calls: ${state.totalCalls}`,
-    );
+    console.log(`[DEBUG FALLBACK] ${modelId}: credit ${current}→${next}, total calls: ${state.totalCalls}`)
 
     if (state.totalCalls >= state.refreshAfterCalls && state.primaryModel) {
-      const primaryCredits = state.credits.get(state.primaryModel) ?? 0;
+      const primaryCredits = state.credits.get(state.primaryModel) ?? 0
       if (primaryCredits === 0) {
-        state.credits.set(state.primaryModel, 1);
-        console.log(
-          `[DEBUG FALLBACK] ✨ Primary ${state.primaryModel} REFRESHED! credit 0→1`,
-        );
+        state.credits.set(state.primaryModel, 1)
+        console.log(`[DEBUG FALLBACK] ✨ Primary ${state.primaryModel} REFRESHED! credit 0→1`)
       }
     }
   }
 
   export function isPrimaryRefreshed(): {
-    refreshed: boolean;
-    modelId: string | null;
+    refreshed: boolean
+    modelId: string | null
   } {
-    if (!state.enabled || !state.primaryModel)
-      return { refreshed: false, modelId: null };
-    const credits = state.credits.get(state.primaryModel) ?? 0;
-    return { refreshed: credits > 0, modelId: state.primaryModel };
+    if (!state.enabled || !state.primaryModel) return { refreshed: false, modelId: null }
+    const credits = state.credits.get(state.primaryModel) ?? 0
+    return { refreshed: credits > 0, modelId: state.primaryModel }
   }
 
   export function reset(): void {
-    state.enabled = false;
-    state.credits.clear();
-    state.totalCalls = 0;
-    state.primaryModel = null;
+    state.enabled = false
+    state.credits.clear()
+    state.totalCalls = 0
+    state.primaryModel = null
   }
+}
+
+/**
+ * Simulate access errors for testing permanent model failures.
+ * Enable with: OPENCODE_DEBUG_ACCESS_ERROR=provider/model-id
+ */
+export function shouldSimulateAccessError(modelId: string): boolean {
+  const simulate = process.env.OPENCODE_DEBUG_ACCESS_ERROR
+  if (!simulate) return false
+  return simulate.split(",").includes(modelId)
 }

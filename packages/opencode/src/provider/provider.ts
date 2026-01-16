@@ -1321,4 +1321,82 @@ export namespace Provider {
 
     return "Model quota exceeded"
   }
+
+  /**
+   * Detect if error indicates a permanent access issue (model will never work).
+   * Access errors = model is inaccessible, skip permanently (no refresh).
+   *
+   * Examples:
+   * - 401 Unauthorized: Invalid/missing API key
+   * - 403 Forbidden: No access to this model
+   * - 404 Not Found: Model doesn't exist
+   */
+  export function isAccessError(error: unknown): boolean {
+    // Handle MessageV2.APIError
+    if (typeof error === "object" && error !== null && "name" in error && error.name === "APIError") {
+      const apiError = error as any
+      const statusCode = apiError.data?.statusCode
+      const message = (apiError.data?.message ?? "").toLowerCase()
+      const responseBody = (apiError.data?.responseBody ?? "").toLowerCase()
+      const combined = `${message} ${responseBody}`
+
+      // HTTP status codes indicating permanent access issues
+      if (statusCode === 401) return true // Unauthorized
+      if (statusCode === 403) return true // Forbidden
+      if (statusCode === 404) return true // Not Found
+
+      // Message patterns
+      if (combined.includes("unauthorized")) return true
+      if (combined.includes("invalid api key")) return true
+      if (combined.includes("invalid_api_key")) return true
+      if (combined.includes("authentication")) return true
+      if (combined.includes("permission denied")) return true
+      if (combined.includes("access denied")) return true
+      if (combined.includes("model not found")) return true
+      if (combined.includes("does not exist")) return true
+
+      return false
+    }
+
+    // Handle plain Error objects
+    if (error instanceof Error) {
+      const message = error.message.toLowerCase()
+      if (message.includes("unauthorized")) return true
+      if (message.includes("invalid api key")) return true
+      if (message.includes("permission denied")) return true
+      if (message.includes("access denied")) return true
+      if (message.includes("not found")) return true
+      return false
+    }
+
+    // Handle response objects with status codes
+    if (typeof error === "object" && error !== null) {
+      const obj = error as any
+      const statusCode = obj.statusCode ?? obj.status
+      if (statusCode === 401 || statusCode === 403 || statusCode === 404) return true
+    }
+
+    return false
+  }
+
+  /**
+   * Get reason string for access error (for UI notification).
+   */
+  export function getAccessErrorReason(error: unknown): string | undefined {
+    if (typeof error === "object" && error !== null && "name" in error && error.name === "APIError") {
+      const apiError = error as any
+      const statusCode = apiError.data?.statusCode
+
+      if (statusCode === 401) return "Invalid or missing API key"
+      if (statusCode === 403) return "No access to this model"
+      if (statusCode === 404) return "Model not found"
+    }
+
+    if (error instanceof Error) {
+      if (error.message.toLowerCase().includes("unauthorized")) return "Invalid or missing API key"
+      if (error.message.toLowerCase().includes("not found")) return "Model not found"
+    }
+
+    return "Access denied"
+  }
 }

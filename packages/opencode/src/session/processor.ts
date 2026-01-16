@@ -429,6 +429,41 @@ export namespace SessionProcessor {
             })
             const error = MessageV2.fromError(e, { providerID: currentModel.providerID })
 
+            // Check if this is an access error (permanent - no refresh)
+            if (Provider.isAccessError(e) && input.models && input.models.length > 1) {
+              const reason = Provider.getAccessErrorReason(e) ?? "Access denied"
+              // Mark as exhausted WITHOUT refresh (undefined = permanent)
+              const result = SessionExhaustion.handleExhaustionError(
+                currentModelIndex,
+                input.models,
+                exhaustionState,
+                e,
+              )
+              // Override refreshAfter to undefined for permanent errors
+              const currentModelId = SessionExhaustion.modelId(input.models[currentModelIndex])
+              exhaustionState = SessionExhaustion.markExhausted(result.state, currentModelId, undefined, reason)
+
+              if ("error" in result) {
+                notifyAllModelsExhausted(result.models)
+                input.assistantMessage.error = error
+                Bus.publish(Session.Event.Error, {
+                  sessionID: input.assistantMessage.sessionID,
+                  error: input.assistantMessage.error,
+                })
+                break
+              }
+
+              const oldModelId = currentModelId
+              const newModelId = SessionExhaustion.modelId(result.nextModel)
+              currentModelIndex = result.nextIndex
+              currentModel = await Provider.getModel(result.nextModel.providerID, result.nextModel.modelID)
+              streamInput.model = currentModel
+              notifyModelFallback(oldModelId, newModelId, reason)
+              log.info("access error, fallback to next model", { from: oldModelId, to: newModelId, reason })
+              attempt = 0
+              continue
+            }
+
             // Check if this is an exhaustion error and we have fallback models
             if (Provider.isExhaustionError(e) && input.models && input.models.length > 1) {
               const result = SessionExhaustion.handleExhaustionError(

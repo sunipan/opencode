@@ -9,7 +9,11 @@
  * - After 3 total calls, primary model gets refreshed → auto-switch back
  */
 
+import { Log } from "@/util/log"
+
 export namespace DebugFallback {
+  const log = Log.create({ service: "debug.fallback" })
+
   interface State {
     enabled: boolean
     credits: Map<string, number>
@@ -46,8 +50,10 @@ export namespace DebugFallback {
       }
     }
 
-    console.log(`[DEBUG FALLBACK] Initialized: ${models.length} models, 1 credit each`)
-    console.log(`[DEBUG FALLBACK] Credits:`, Object.fromEntries(state.credits))
+    log.info("initialized", {
+      models: models.length,
+      credits: Object.fromEntries(state.credits),
+    })
   }
 
   export function shouldExhaust(modelId: string): boolean {
@@ -55,7 +61,7 @@ export namespace DebugFallback {
     const credits = state.credits.get(modelId) ?? 0
     const exhaust = credits <= 0
     if (exhaust) {
-      console.log(`[DEBUG FALLBACK] ${modelId} has 0 credits → simulating exhaustion`)
+      log.info("simulating exhaustion", { model: modelId, credits: 0 })
     }
     return exhaust
   }
@@ -68,13 +74,18 @@ export namespace DebugFallback {
     state.credits.set(modelId, next)
     state.totalCalls++
 
-    console.log(`[DEBUG FALLBACK] ${modelId}: credit ${current}→${next}, total calls: ${state.totalCalls}`)
+    log.info("credit consumed", {
+      model: modelId,
+      before: current,
+      after: next,
+      totalCalls: state.totalCalls,
+    })
 
     if (state.totalCalls >= state.refreshAfterCalls && state.primaryModel) {
       const primaryCredits = state.credits.get(state.primaryModel) ?? 0
       if (primaryCredits === 0) {
         state.credits.set(state.primaryModel, 1)
-        console.log(`[DEBUG FALLBACK] ✨ Primary ${state.primaryModel} REFRESHED! credit 0→1`)
+        log.info("primary refreshed", { model: state.primaryModel })
       }
     }
   }

@@ -90,6 +90,15 @@ export namespace SessionPrompt {
         modelID: z.string(),
       })
       .optional(),
+    models: z
+      .array(
+        z.object({
+          providerID: z.string(),
+          modelID: z.string(),
+          refreshAfter: z.number().optional(),
+        }),
+      )
+      .optional(),
     agent: z.string().optional(),
     noReply: z.boolean().optional(),
     tools: z
@@ -820,6 +829,13 @@ export namespace SessionPrompt {
 
   async function createUserMessage(input: PromptInput) {
     const agent = await Agent.get(input.agent ?? (await Agent.defaultAgent()))
+    // Get primary model from input.models, input.model, agent.models, agent.model, or lastModel
+    const primaryModel =
+      input.model ??
+      (input.models?.[0] ? { providerID: input.models[0].providerID, modelID: input.models[0].modelID } : undefined) ??
+      (agent.models?.[0] ? { providerID: agent.models[0].providerID, modelID: agent.models[0].modelID } : undefined) ??
+      agent.model ??
+      (await lastModel(input.sessionID))
     const info: MessageV2.Info = {
       id: input.messageID ?? Identifier.ascending("message"),
       role: "user",
@@ -829,7 +845,7 @@ export namespace SessionPrompt {
       },
       tools: input.tools,
       agent: agent.name,
-      model: input.model ?? agent.model ?? (await lastModel(input.sessionID)),
+      model: primaryModel,
       system: input.system,
       variant: input.variant,
     }

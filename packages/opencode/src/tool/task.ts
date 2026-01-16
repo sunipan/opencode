@@ -130,10 +130,12 @@ export const TaskTool = Tool.define("task", async (ctx) => {
         })
       })
 
-      const model = agent.model ?? {
-        modelID: msg.info.modelID,
-        providerID: msg.info.providerID,
-      }
+      // Get primary model from models array (first entry) or single model, fallback to parent
+      const primaryModel = agent.models?.[0] ??
+        agent.model ?? {
+          modelID: msg.info.modelID,
+          providerID: msg.info.providerID,
+        }
 
       function cancel() {
         SessionPrompt.cancel(session.id)
@@ -146,9 +148,10 @@ export const TaskTool = Tool.define("task", async (ctx) => {
         messageID,
         sessionID: session.id,
         model: {
-          modelID: model.modelID,
-          providerID: model.providerID,
+          modelID: primaryModel.modelID,
+          providerID: primaryModel.providerID,
         },
+        models: agent.models,
         agent: agent.name,
         tools: {
           todowrite: false,

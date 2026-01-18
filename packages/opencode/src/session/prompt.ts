@@ -313,6 +313,15 @@ export namespace SessionPrompt {
       // Load agent to access model list for fallback
       const agent = await Agent.get(lastUser.agent)
 
+      // Test keywords - check user message for reset-model or exhaust-model
+      const currentUserMsg = msgs.find((m) => m.info.id === lastUser.id)
+      const userText = currentUserMsg?.parts.find((p) => p.type === "text")?.text ?? ""
+      const shouldExhaustAfter = userText.includes("exhaust-model")
+
+      if (userText.includes("reset-model")) {
+        ModelFallback.reset()
+      }
+
       // Check for recovery before selecting model
       ModelFallback.checkRecovery()
 
@@ -721,6 +730,12 @@ export namespace SessionPrompt {
           auto: true,
         })
       }
+
+      // Test keyword - exhaust model after response completes
+      if (shouldExhaustAfter && activeResult) {
+        ModelFallback.forceExhaust(activeResult.model)
+      }
+
       continue
     }
     SessionCompaction.prune({ sessionID })

@@ -1705,11 +1705,16 @@ NOTE: At any point in time through this workflow you should feel free to ask the
       if (!agent) throw new Error(`Agent not found: ${agentName}`)
       const modelList = agent.models ?? (agent.model ? [agent.model] : [])
       if (modelList.length === 0) throw new Error(`Agent ${agentName} has no models configured`)
-      ModelFallback.forceExhaust(modelList[0])
+
+      // Find the currently active model (first non-exhausted)
+      const active = ModelFallback.getActiveModel(modelList)
+      if (!active) throw new Error(`All models already exhausted for agent ${agentName}`)
+
+      ModelFallback.forceExhaust(active.model)
       return createUserMessage({
         sessionID: input.sessionID,
         parts: [
-          { type: "text", text: `Exhausted model ${ModelFallback.getModelKey(modelList[0])} for agent ${agentName}` },
+          { type: "text", text: `Exhausted model ${ModelFallback.getModelKey(active.model)} for agent ${agentName}` },
         ],
       })
     }

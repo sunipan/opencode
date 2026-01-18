@@ -149,12 +149,6 @@ export namespace SessionPrompt {
   export type PromptInput = z.infer<typeof PromptInput>
 
   export const prompt = fn(PromptInput, async (input) => {
-    // Check for reset-model keyword in user input FIRST
-    const inputText = input.parts?.find((p) => p.type === "text")?.text ?? ""
-    if (inputText.includes("reset-model")) {
-      ModelFallback.reset()
-    }
-
     const session = await Session.get(input.sessionID)
     await SessionRevert.cleanup(session)
 
@@ -318,11 +312,6 @@ export namespace SessionPrompt {
 
       // Load agent to access model list for fallback
       const agent = await Agent.get(lastUser.agent)
-
-      // Test keywords - check user message for exhaust-model
-      const currentUserMsg = msgs.find((m) => m.info.id === lastUser.id)
-      const userText = currentUserMsg?.parts.find((p) => p.type === "text")?.text ?? ""
-      const shouldExhaustAfter = userText.includes("exhaust-model")
 
       // Check for recovery before selecting model
       ModelFallback.checkRecovery()
@@ -731,11 +720,6 @@ export namespace SessionPrompt {
           model: lastUser.model,
           auto: true,
         })
-      }
-
-      // Test keyword - exhaust model after response completes
-      if (shouldExhaustAfter && activeResult) {
-        ModelFallback.forceExhaust(activeResult.model)
       }
 
       continue
@@ -1712,6 +1696,43 @@ NOTE: At any point in time through this workflow you should feel free to ask the
 
   export async function command(input: CommandInput) {
     log.info("command", input)
+
+    // Handle test commands for model fallback
+    if (input.command === "exhaust") {
+      const agentName = input.arguments.trim()
+      if (!agentName) throw new Error("Usage: /exhaust <agent-name>")
+      const agent = await Agent.get(agentName)
+      if (!agent) throw new Error(`Agent not found: ${agentName}`)
+      const modelList = agent.models ?? (agent.model ? [agent.model] : [])
+      if (modelList.length === 0) throw new Error(`Agent ${agentName} has no models configured`)
+      ModelFallback.forceExhaust(modelList[0])
+      return createUserMessage({
+        sessionID: input.sessionID,
+        parts: [
+          { type: "text", text: `Exhausted model ${ModelFallback.getModelKey(modelList[0])} for agent ${agentName}` },
+        ],
+      })
+    }
+
+    if (input.command === "reset") {
+      const agentName = input.arguments.trim()
+      if (!agentName) {
+        ModelFallback.reset()
+        return createUserMessage({
+          sessionID: input.sessionID,
+          parts: [{ type: "text", text: `Reset all model exhaustion state` }],
+        })
+      }
+      const agent = await Agent.get(agentName)
+      if (!agent) throw new Error(`Agent not found: ${agentName}`)
+      const modelList = agent.models ?? (agent.model ? [agent.model] : [])
+      for (const model of modelList) ModelFallback.clearExhaustion(model)
+      return createUserMessage({
+        sessionID: input.sessionID,
+        parts: [{ type: "text", text: `Reset exhaustion for agent ${agentName}` }],
+      })
+    }
+
     const command = await Command.get(input.command)
     const agentName = command.agent ?? input.agent ?? (await Agent.defaultAgent())
 

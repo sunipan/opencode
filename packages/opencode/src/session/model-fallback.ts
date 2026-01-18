@@ -97,11 +97,17 @@ export namespace ModelFallback {
   export function reset(): void {
     exhaustedModels.clear()
     failureCounts.clear()
-    log.info("test: all models reset")
+    log.info("all models reset")
   }
 
   export function forceExhaust(model: ModelRef): void {
     markExhausted(model, "test:forced")
-    log.info("test: model exhausted", { model: getModelKey(model) })
+  }
+
+  export function clearExhaustion(model: ModelRef): void {
+    const key = getModelKey(model)
+    exhaustedModels.delete(key)
+    failureCounts.delete(key)
+    log.info("model exhaustion cleared", { model: key })
   }
 }

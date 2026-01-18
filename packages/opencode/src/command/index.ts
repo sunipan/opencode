@@ -76,6 +76,18 @@ export namespace Command {
         subtask: true,
         hints: hints(PROMPT_REVIEW),
       },
+      exhaust: {
+        name: "exhaust",
+        description: "Exhaust an agent's primary model for testing fallback",
+        template: "",
+        hints: ["$1"],
+      },
+      reset: {
+        name: "reset",
+        description: "Reset model exhaustion state (optionally for specific agent)",
+        template: "",
+        hints: ["$1"],
+      },
     }
 
     for (const [name, command] of Object.entries(cfg.command ?? {})) {

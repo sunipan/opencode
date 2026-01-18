@@ -128,6 +128,17 @@ export namespace SessionRetry {
       }
     }
 
+    // Model not found - skip to next model immediately
+    if (combined.includes("model not found") || combined.includes("not found") || statusCode === 404) {
+      return {
+        class: ErrorClass.AUTH_ERROR, // Reuse AUTH_ERROR since behavior is same
+        shouldRetry: false,
+        maxRetries: 0,
+        shouldSwitch: true,
+        message: "Model not found or unavailable",
+      }
+    }
+
     // Quota/plan limit errors - switch immediately (won't recover soon)
     if (
       (combined.includes("exceed") && combined.includes("plan")) ||

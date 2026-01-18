@@ -348,7 +348,20 @@ export namespace SessionPrompt {
         isUsingFallback = activeResult.index > 0
       }
 
-      const model = await Provider.getModel(modelToUse.providerID, modelToUse.modelID)
+      let model: Provider.Model
+      try {
+        model = await Provider.getModel(modelToUse.providerID, modelToUse.modelID)
+      } catch (e) {
+        if (Provider.ModelNotFoundError.isInstance(e) && modelList.length > 0) {
+          log.warn("model not found, trying fallback", {
+            model: ModelFallback.getModelKey(modelToUse),
+            suggestions: (e as any).data?.suggestions,
+          })
+          ModelFallback.markExhausted(modelToUse, "model_not_found")
+          continue // Try next model in loop
+        }
+        throw e // Re-throw non-model errors or if no fallback available
+      }
       const task = tasks.pop()
 
       // pending subtask

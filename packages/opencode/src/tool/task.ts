@@ -11,6 +11,7 @@ import { iife } from "@/util/iife"
 import { defer } from "@/util/defer"
 import { Config } from "../config/config"
 import { PermissionNext } from "@/permission/next"
+import { ModelFallback } from "../session/model-fallback"
 
 const parameters = z.object({
   description: z.string().describe("A short (3-5 words) description of the task"),
@@ -130,9 +131,21 @@ export const TaskTool = Tool.define("task", async (ctx) => {
         })
       })
 
-      const model = agent.model ?? {
-        modelID: msg.info.modelID,
-        providerID: msg.info.providerID,
+      const modelList = agent.models ?? (agent.model ? [agent.model] : [])
+      let model: { providerID: string; modelID: string }
+
+      if (modelList.length > 0) {
+        const active = ModelFallback.getActiveModel(modelList)
+        if (!active) {
+          throw new Error(`All models exhausted for agent ${agent.name}. Please wait and retry.`)
+        }
+        model = active.model
+      } else {
+        // Fallback to parent's model if agent has no models configured
+        model = {
+          modelID: msg.info.modelID,
+          providerID: msg.info.providerID,
+        }
       }
 
       function cancel() {

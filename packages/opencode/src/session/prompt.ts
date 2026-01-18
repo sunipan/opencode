@@ -149,6 +149,12 @@ export namespace SessionPrompt {
   export type PromptInput = z.infer<typeof PromptInput>
 
   export const prompt = fn(PromptInput, async (input) => {
+    // Check for reset-model keyword in user input FIRST
+    const inputText = input.parts?.find((p) => p.type === "text")?.text ?? ""
+    if (inputText.includes("reset-model")) {
+      ModelFallback.reset()
+    }
+
     const session = await Session.get(input.sessionID)
     await SessionRevert.cleanup(session)
 
@@ -313,14 +319,10 @@ export namespace SessionPrompt {
       // Load agent to access model list for fallback
       const agent = await Agent.get(lastUser.agent)
 
-      // Test keywords - check user message for reset-model or exhaust-model
+      // Test keywords - check user message for exhaust-model
       const currentUserMsg = msgs.find((m) => m.info.id === lastUser.id)
       const userText = currentUserMsg?.parts.find((p) => p.type === "text")?.text ?? ""
       const shouldExhaustAfter = userText.includes("exhaust-model")
-
-      if (userText.includes("reset-model")) {
-        ModelFallback.reset()
-      }
 
       // Check for recovery before selecting model
       ModelFallback.checkRecovery()

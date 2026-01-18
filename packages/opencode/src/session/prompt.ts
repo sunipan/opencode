@@ -319,26 +319,36 @@ export namespace SessionPrompt {
       // Get agent's model list (prefer models array, fallback to single model)
       const modelList = agent.models ?? (agent.model ? [agent.model] : [])
 
-      // Get active model (first non-exhausted)
-      const activeResult = ModelFallback.getActiveModel(modelList)
+      // Determine which model to use
+      let modelToUse: { providerID: string; modelID: string }
+      let isUsingFallback = false
+      let activeResult: { model: { providerID: string; modelID: string }; index: number } | undefined
 
-      if (!activeResult) {
-        const state = ModelFallback.getState()
-        const modelKeys = modelList.map((m) => ModelFallback.getModelKey(m))
-        log.error("all models exhausted", {
-          agent: agent.name,
-          models: modelKeys,
-          exhaustionState: state,
-        })
-        throw new Error(
-          `All models exhausted for agent ${agent.name}. Models: ${modelKeys.join(", ")}. Please wait and retry.`,
-        )
+      if (modelList.length === 0) {
+        // Native agents without models configured - use lastUser.model directly
+        modelToUse = lastUser.model
+      } else {
+        // Agent has models configured - use fallback logic
+        activeResult = ModelFallback.getActiveModel(modelList)
+
+        if (!activeResult) {
+          const state = ModelFallback.getState()
+          const modelKeys = modelList.map((m) => ModelFallback.getModelKey(m))
+          log.error("all models exhausted", {
+            agent: agent.name,
+            models: modelKeys,
+            exhaustionState: state,
+          })
+          throw new Error(
+            `All models exhausted for agent ${agent.name}. Models: ${modelKeys.join(", ")}. Please wait and retry.`,
+          )
+        }
+
+        modelToUse = activeResult.model
+        isUsingFallback = activeResult.index > 0
       }
 
-      // Track if using fallback (for potential UI use)
-      const isUsingFallback = activeResult.index > 0
-
-      const model = await Provider.getModel(activeResult.model.providerID, activeResult.model.modelID)
+      const model = await Provider.getModel(modelToUse.providerID, modelToUse.modelID)
       const task = tasks.pop()
 
       // pending subtask
@@ -639,6 +649,12 @@ export namespace SessionPrompt {
       })
 
       if (result === "fallback") {
+        // Fallback only works for agents with models configured
+        if (modelList.length === 0) {
+          log.error("fallback requested but agent has no models configured")
+          break
+        }
+
         // Get next available model
         const nextModel = ModelFallback.getActiveModel(modelList)
 
@@ -646,6 +662,12 @@ export namespace SessionPrompt {
           // All models exhausted - break with error
           log.error("all models exhausted during fallback")
           // The user will see the last error from the processor
+          break
+        }
+
+        // activeResult must exist here since modelList.length > 0
+        if (!activeResult) {
+          log.error("activeResult is undefined during fallback")
           break
         }
 

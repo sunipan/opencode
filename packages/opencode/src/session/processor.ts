@@ -15,6 +15,7 @@ import { Config } from "@/config/config"
 import { SessionCompaction } from "./compaction"
 import { PermissionNext } from "@/permission/next"
 import { Question } from "@/question"
+import { ModelFallback } from "./model-fallback"
 
 export namespace SessionProcessor {
   const DOOM_LOOP_THRESHOLD = 3
@@ -42,10 +43,11 @@ export namespace SessionProcessor {
       partFromToolCall(toolCallID: string) {
         return toolcalls[toolCallID]
       },
-      async process(streamInput: LLM.StreamInput) {
+      async process(streamInput: LLM.StreamInput): Promise<"stop" | "compact" | "continue" | "fallback"> {
         log.info("process")
         needsCompaction = false
         const shouldBreak = (await Config.get()).experimental?.continue_loop_on_deny !== true
+        const modelRef = { providerID: input.model.providerID, modelID: input.model.id }
         while (true) {
           try {
             let currentText: MessageV2.TextPart | undefined
@@ -342,6 +344,39 @@ export namespace SessionProcessor {
               stack: JSON.stringify(e.stack),
             })
             const error = MessageV2.fromError(e, { providerID: input.model.providerID })
+
+            // Classify error for fallback decision
+            const classification = SessionRetry.classifyError(error)
+
+            // Handle quota exhaustion - switch immediately
+            if (classification.class === SessionRetry.ErrorClass.QUOTA_EXCEEDED) {
+              ModelFallback.markExhausted(modelRef, "quota")
+              log.info("quota exhausted, triggering fallback", { model: ModelFallback.getModelKey(modelRef) })
+              return "fallback" as const
+            }
+
+            // Handle auth errors - skip this model
+            if (classification.class === SessionRetry.ErrorClass.AUTH_ERROR) {
+              ModelFallback.markExhausted(modelRef, "auth")
+              log.info("auth error, skipping model", { model: ModelFallback.getModelKey(modelRef) })
+              return "fallback" as const
+            }
+
+            // Handle rate limits / network errors - track failures
+            if (
+              classification.class === SessionRetry.ErrorClass.RATE_LIMITED ||
+              classification.class === SessionRetry.ErrorClass.NETWORK_ERROR
+            ) {
+              const shouldSwitch = ModelFallback.recordFailure(modelRef)
+              if (shouldSwitch) {
+                ModelFallback.markExhausted(modelRef, classification.class)
+                log.info("max failures reached, triggering fallback", { model: ModelFallback.getModelKey(modelRef) })
+                return "fallback" as const
+              }
+              // Fall through to existing retry logic below
+            }
+
+            // Existing retry logic
             const retry = SessionRetry.retryable(error)
             if (retry !== undefined) {
               attempt++
@@ -397,6 +432,7 @@ export namespace SessionProcessor {
           if (needsCompaction) return "compact"
           if (blocked) return "stop"
           if (input.assistantMessage.error) return "stop"
+          ModelFallback.recordSuccess(modelRef)
           return "continue"
         }
       },

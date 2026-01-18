@@ -125,6 +125,33 @@ export namespace Session {
         error: MessageV2.Assistant.shape.error,
       }),
     ),
+    ModelFallback: BusEvent.define(
+      "session.model.fallback",
+      z.object({
+        sessionID: z.string(),
+        fromModel: z.object({
+          providerID: z.string(),
+          modelID: z.string(),
+        }),
+        toModel: z.object({
+          providerID: z.string(),
+          modelID: z.string(),
+        }),
+        reason: z.string(),
+      }),
+    ),
+    ModelsExhausted: BusEvent.define(
+      "session.models.exhausted",
+      z.object({
+        sessionID: z.string(),
+        models: z.array(
+          z.object({
+            providerID: z.string(),
+            modelID: z.string(),
+          }),
+        ),
+      }),
+    ),
   }
 
   export const create = fn(

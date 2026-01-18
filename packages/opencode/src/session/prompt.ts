@@ -44,6 +44,7 @@ import { SessionStatus } from "./status"
 import { LLM } from "./llm"
 import { iife } from "@/util/iife"
 import { Shell } from "@/shell/shell"
+import { ModelFallback } from "./model-fallback"
 
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -309,7 +310,27 @@ export namespace SessionPrompt {
           history: msgs,
         })
 
-      const model = await Provider.getModel(lastUser.model.providerID, lastUser.model.modelID)
+      // Load agent to access model list for fallback
+      const agent = await Agent.get(lastUser.agent)
+
+      // Check for recovery before selecting model
+      ModelFallback.checkRecovery()
+
+      // Get agent's model list (prefer models array, fallback to single model)
+      const modelList = agent.models ?? (agent.model ? [agent.model] : [])
+
+      // Get active model (first non-exhausted)
+      const activeResult = ModelFallback.getActiveModel(modelList)
+
+      if (!activeResult) {
+        // All models exhausted - throw error
+        throw new Error(`All models exhausted for agent ${agent.name}. Please wait and retry.`)
+      }
+
+      // Track if using fallback (for potential UI use)
+      const isUsingFallback = activeResult.index > 0
+
+      const model = await Provider.getModel(activeResult.model.providerID, activeResult.model.modelID)
       const task = tasks.pop()
 
       // pending subtask
@@ -507,7 +528,6 @@ export namespace SessionPrompt {
       }
 
       // normal processing
-      const agent = await Agent.get(lastUser.agent)
       const maxSteps = agent.steps ?? Infinity
       const isLastStep = step >= maxSteps
       msgs = await insertReminders({
@@ -609,6 +629,46 @@ export namespace SessionPrompt {
         tools,
         model,
       })
+
+      if (result === "fallback") {
+        // Get next available model
+        const nextModel = ModelFallback.getActiveModel(modelList)
+
+        if (!nextModel) {
+          // All models exhausted - break with error
+          log.error("all models exhausted during fallback")
+          // The user will see the last error from the processor
+          break
+        }
+
+        // Get exhaustion reason
+        const exhaustionInfo = ModelFallback.getExhaustionInfo(activeResult.model)
+        const reason = exhaustionInfo?.reason ?? "unknown"
+
+        // Log the fallback for debugging
+        log.info("falling back to next model", {
+          from: ModelFallback.getModelKey(activeResult.model),
+          to: ModelFallback.getModelKey(nextModel.model),
+        })
+
+        // Emit ModelFallback event for UI
+        Bus.publish(Session.Event.ModelFallback, {
+          sessionID,
+          fromModel: {
+            providerID: activeResult.model.providerID,
+            modelID: activeResult.model.modelID,
+          },
+          toModel: {
+            providerID: nextModel.model.providerID,
+            modelID: nextModel.model.modelID,
+          },
+          reason,
+        })
+
+        // Continue the loop - next iteration will use the new model
+        continue
+      }
+
       if (result === "stop") break
       if (result === "compact") {
         await SessionCompaction.create({

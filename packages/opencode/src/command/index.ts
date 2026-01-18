@@ -88,6 +88,12 @@ export namespace Command {
         template: "",
         hints: ["$1"],
       },
+      status: {
+        name: "status",
+        description: "Show model fallback status (exhausted models)",
+        template: "",
+        hints: [],
+      },
     }
 
     for (const [name, command] of Object.entries(cfg.command ?? {})) {

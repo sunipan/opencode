@@ -1738,6 +1738,24 @@ NOTE: At any point in time through this workflow you should feel free to ask the
       })
     }
 
+    if (input.command === "status") {
+      const state = ModelFallback.getState()
+      const lines = ["Model Fallback Status:"]
+      if (state.exhausted.length === 0) {
+        lines.push("  No models exhausted")
+      } else {
+        lines.push("  Exhausted models:")
+        for (const { key, entry } of state.exhausted) {
+          const remaining = Math.max(0, Math.ceil((entry.refreshAt - Date.now()) / 1000 / 60))
+          lines.push(`    - ${key} (reason: ${entry.reason}, recovers in ${remaining}m)`)
+        }
+      }
+      return createUserMessage({
+        sessionID: input.sessionID,
+        parts: [{ type: "text", text: lines.join("\n") }],
+      })
+    }
+
     const command = await Command.get(input.command)
     const agentName = command.agent ?? input.agent ?? (await Agent.defaultAgent())
 

@@ -34,6 +34,14 @@ export namespace Agent {
           providerID: z.string(),
         })
         .optional(),
+      models: z
+        .array(
+          z.object({
+            modelID: z.string(),
+            providerID: z.string(),
+          }),
+        )
+        .optional(),
       prompt: z.string().optional(),
       options: z.record(z.string(), z.any()),
       steps: z.number().int().positive().optional(),
@@ -208,7 +216,14 @@ export namespace Agent {
           options: {},
           native: false,
         }
-      if (value.model) item.model = Provider.parseModel(value.model)
+      if (value.model) {
+        // Normalize to array
+        const modelList = Array.isArray(value.model) ? value.model : [value.model]
+        // Parse each model string to {providerID, modelID}
+        item.models = modelList.map((m) => Provider.parseModel(m))
+        // Keep backward compat - first model is primary
+        item.model = item.models[0]
+      }
       item.prompt = value.prompt ?? item.prompt
       item.description = value.description ?? item.description
       item.temperature = value.temperature ?? item.temperature

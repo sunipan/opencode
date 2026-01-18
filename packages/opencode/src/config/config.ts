@@ -545,7 +545,13 @@ export namespace Config {
 
   export const Agent = z
     .object({
-      model: z.string().optional(),
+      /**
+       * Model to use for this agent.
+       * Can be a single model string (e.g., "anthropic/claude-opus-4-5")
+       * or an array of models for fallback behavior (e.g., ["anthropic/claude-opus-4-5", "google/gemini-3-pro-preview"]).
+       * When an array is provided, the agent will attempt to use models in order until one succeeds.
+       */
+      model: z.union([z.string(), z.array(z.string())]).optional(),
       temperature: z.number().optional(),
       top_p: z.number().optional(),
       prompt: z.string().optional(),

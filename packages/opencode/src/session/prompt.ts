@@ -323,8 +323,16 @@ export namespace SessionPrompt {
       const activeResult = ModelFallback.getActiveModel(modelList)
 
       if (!activeResult) {
-        // All models exhausted - throw error
-        throw new Error(`All models exhausted for agent ${agent.name}. Please wait and retry.`)
+        const state = ModelFallback.getState()
+        const modelKeys = modelList.map((m) => ModelFallback.getModelKey(m))
+        log.error("all models exhausted", {
+          agent: agent.name,
+          models: modelKeys,
+          exhaustionState: state,
+        })
+        throw new Error(
+          `All models exhausted for agent ${agent.name}. Models: ${modelKeys.join(", ")}. Please wait and retry.`,
+        )
       }
 
       // Track if using fallback (for potential UI use)

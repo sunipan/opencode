@@ -777,6 +777,33 @@ export type EventSessionError = {
   }
 }
 
+export type EventSessionModelFallback = {
+  type: "session.model.fallback"
+  properties: {
+    sessionID: string
+    fromModel: {
+      providerID: string
+      modelID: string
+    }
+    toModel: {
+      providerID: string
+      modelID: string
+    }
+    reason: string
+  }
+}
+
+export type EventSessionModelsExhausted = {
+  type: "session.models.exhausted"
+  properties: {
+    sessionID: string
+    models: Array<{
+      providerID: string
+      modelID: string
+    }>
+  }
+}
+
 export type EventFileWatcherUpdated = {
   type: "file.watcher.updated"
   properties: {
@@ -877,6 +904,8 @@ export type Event =
   | EventSessionDeleted
   | EventSessionDiff
   | EventSessionError
+  | EventSessionModelFallback
+  | EventSessionModelsExhausted
   | EventFileWatcherUpdated
   | EventVcsBranchUpdated
   | EventPtyCreated
@@ -1335,7 +1364,7 @@ export type PermissionConfig =
   | PermissionActionConfig
 
 export type AgentConfig = {
-  model?: string
+  model?: string | Array<string>
   temperature?: number
   top_p?: number
   prompt?: string
@@ -1374,7 +1403,9 @@ export type AgentConfig = {
   [key: string]:
     | unknown
     | string
+    | Array<string>
     | number
+    | string
     | {
         [key: string]: boolean
       }
@@ -2023,6 +2054,10 @@ export type Agent = {
     modelID: string
     providerID: string
   }
+  models?: Array<{
+    modelID: string
+    providerID: string
+  }>
   prompt?: string
   options: {
     [key: string]: unknown

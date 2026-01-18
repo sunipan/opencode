@@ -54,6 +54,13 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       session_diff: {
         [sessionID: string]: Snapshot.FileDiff[]
       }
+      session_fallback: {
+        [sessionID: string]: {
+          original: { providerID: string; modelID: string }
+          active: { providerID: string; modelID: string }
+          reason: string
+        }
+      }
       todo: {
         [sessionID: string]: Todo[]
       }
@@ -91,6 +98,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       session: [],
       session_status: {},
       session_diff: {},
+      session_fallback: {},
       todo: {},
       message: {},
       part: {},
@@ -302,6 +310,15 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
 
         case "vcs.branch.updated": {
           setStore("vcs", { branch: event.properties.branch })
+          break
+        }
+
+        case "session.model.fallback": {
+          setStore("session_fallback", event.properties.sessionID, {
+            original: event.properties.fromModel,
+            active: event.properties.toModel,
+            reason: event.properties.reason,
+          })
           break
         }
       }

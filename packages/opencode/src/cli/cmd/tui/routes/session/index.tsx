@@ -213,6 +213,26 @@ export function Session() {
     }
   })
 
+  // Handle model fallback notifications
+  sdk.event.on("session.model.fallback", (evt) => {
+    if (evt.properties.sessionID !== route.sessionID) return
+    
+    const getModelName = (model: { providerID: string; modelID: string }) => {
+      const provider = sync.data.provider.find((p) => p.id === model.providerID)
+      return provider?.models[model.modelID]?.name ?? model.modelID
+    }
+    
+    const fromName = getModelName(evt.properties.fromModel)
+    const toName = getModelName(evt.properties.toModel)
+    
+    toast.show({
+      variant: "warning",
+      title: "Model Fallback",
+      message: `${fromName} → ${toName} (${evt.properties.reason})`,
+      duration: 5000,
+    })
+  })
+
   let scroll: ScrollBoxRenderable
   let prompt: PromptRef
   const keybind = useKeybind()

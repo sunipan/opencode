@@ -67,6 +67,13 @@ export function Prompt(props: PromptProps) {
   const dialog = useDialog()
   const toast = useToast()
   const status = createMemo(() => sync.data.session_status?.[props.sessionID ?? ""] ?? { type: "idle" })
+  const fallbackState = createMemo(() => sync.data.session_fallback?.[props.sessionID ?? ""])
+
+  const getModelDisplayName = (model: { providerID: string; modelID: string }) => {
+    const provider = sync.data.provider.find((p) => p.id === model.providerID)
+    return provider?.models[model.modelID]?.name ?? model.modelID
+  }
+
   const history = usePromptHistory()
   const stash = usePromptStash()
   const command = useCommandDialog()
@@ -939,10 +946,29 @@ export function Prompt(props: PromptProps) {
               </text>
               <Show when={store.mode === "normal"}>
                 <box flexDirection="row" gap={1}>
-                  <text flexShrink={0} fg={keybind.leader ? theme.textMuted : theme.text}>
-                    {local.model.parsed().model}
-                  </text>
-                  <text fg={theme.textMuted}>{local.model.parsed().provider}</text>
+                  <Show
+                    when={fallbackState()}
+                    fallback={
+                      <>
+                        <text flexShrink={0} fg={keybind.leader ? theme.textMuted : theme.text}>
+                          {local.model.parsed().model}
+                        </text>
+                        <text fg={theme.textMuted}>{local.model.parsed().provider}</text>
+                      </>
+                    }
+                  >
+                    {(fb) => (
+                      <>
+                        <text flexShrink={0} fg={theme.textMuted}>
+                          {getModelDisplayName(fb().original)}
+                        </text>
+                        <text fg={theme.warning}> → </text>
+                        <text flexShrink={0} fg={theme.warning}>
+                          {getModelDisplayName(fb().active)}
+                        </text>
+                      </>
+                    )}
+                  </Show>
                   <Show when={showVariant()}>
                     <text fg={theme.textMuted}>·</text>
                     <text>

@@ -27,6 +27,7 @@ export interface DialogSelectProps<T> {
     onTrigger: (option: DialogSelectOption<T>) => void
   }[]
   current?: T
+  centerOnCurrent?: boolean
 }
 
 export interface DialogSelectOption<T = any> {
@@ -111,12 +112,15 @@ export function DialogSelect<T>(props: DialogSelectProps<T>) {
     on([() => store.filter, () => props.current], ([filter, current]) => {
       setTimeout(() => {
         if (filter.length > 0) {
-          moveTo(0, true)
+          moveTo(0, false)
         } else if (current) {
           const currentIndex = flat().findIndex((opt) => isDeepEqual(opt.value, current))
           if (currentIndex >= 0) {
-            moveTo(currentIndex, true)
+            moveTo(currentIndex, props.centerOnCurrent ?? false)
           }
+        } else {
+          // No filter, no current - ensure scroll is at top
+          moveTo(0, false)
         }
       }, 0)
     }),

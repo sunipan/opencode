@@ -75,6 +75,7 @@ export function DialogSessionList() {
       options={options()}
       skipFilter={true}
       current={currentSessionID()}
+      centerOnCurrent={true}
       onFilter={setSearch}
       onMove={() => {
         setToDelete(undefined)

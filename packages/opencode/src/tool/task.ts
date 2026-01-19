@@ -140,6 +140,16 @@ export const TaskTool = Tool.define("task", async (ctx) => {
           throw new Error(`All models exhausted for agent ${agent.name}. Please wait and retry.`)
         }
         model = active.model
+
+        // Publish fallback event if not using primary model
+        if (active.index > 0) {
+          Bus.publish(Session.Event.ModelFallback, {
+            sessionID: session.id,
+            fromModel: modelList[0],
+            toModel: active.model,
+            reason: "primary model exhausted",
+          })
+        }
       } else {
         // Fallback to parent's model if agent has no models configured
         model = {

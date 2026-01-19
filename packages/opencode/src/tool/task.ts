@@ -12,6 +12,7 @@ import { defer } from "@/util/defer"
 import { Config } from "../config/config"
 import { PermissionNext } from "@/permission/next"
 import { ModelFallback } from "../session/model-fallback"
+import { TuiEvent } from "@/cli/cmd/tui/event"
 
 const parameters = z.object({
   description: z.string().describe("A short (3-5 words) description of the task"),
@@ -137,7 +138,22 @@ export const TaskTool = Tool.define("task", async (ctx) => {
       if (modelList.length > 0) {
         const active = ModelFallback.getActiveModel(modelList)
         if (!active) {
-          throw new Error(`All models exhausted for agent ${agent.name}. Please wait and retry.`)
+          // Show toast notification
+          Bus.publish(TuiEvent.ToastShow, {
+            title: "Subagent Models Exhausted",
+            message: `All models for ${agent.name} are temporarily unavailable. Please wait and try again.`,
+            variant: "error",
+            duration: 8000,
+          }).catch(() => {})
+
+          return {
+            title: `All models exhausted for agent ${agent.name}`,
+            metadata: {
+              summary: [],
+              sessionId: "",
+            },
+            output: `All models for ${agent.name} are temporarily unavailable. Please wait a moment and try again.`,
+          }
         }
         model = active.model
 
@@ -183,6 +199,16 @@ export const TaskTool = Tool.define("task", async (ctx) => {
         parts: promptParts,
       })
       unsub()
+      if (!result) {
+        return {
+          title: params.description,
+          metadata: {
+            summary: [],
+            sessionId: session.id,
+          },
+          output: "Task could not be completed. Please try again.",
+        }
+      }
       const messages = await Session.messages({ sessionID: session.id })
       const summary = messages
         .filter((x) => x.info.role === "assistant")

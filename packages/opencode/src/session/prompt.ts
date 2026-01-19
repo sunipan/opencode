@@ -45,6 +45,7 @@ import { LLM } from "./llm"
 import { iife } from "@/util/iife"
 import { Shell } from "@/shell/shell"
 import { ModelFallback } from "./model-fallback"
+import { TuiEvent } from "@/cli/cmd/tui/event"
 
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -339,9 +340,26 @@ export namespace SessionPrompt {
             models: modelKeys,
             exhaustionState: state,
           })
-          throw new Error(
-            `All models exhausted for agent ${agent.name}. Models: ${modelKeys.join(", ")}. Please wait and retry.`,
-          )
+
+          // Show toast notification instead of throwing
+          Bus.publish(TuiEvent.ToastShow, {
+            title: "All Models Exhausted",
+            message: `All models for ${agent.name} are temporarily unavailable. Please wait a moment and try again.`,
+            variant: "error",
+            duration: 8000,
+          }).catch(() => {})
+
+          // Publish exhausted event for UI tracking
+          Bus.publish(Session.Event.ModelsExhausted, {
+            sessionID,
+            models: modelList,
+          }).catch(() => {})
+
+
+          // Throw error - callers should catch and handle gracefully
+          throw new NamedError.Unknown({
+            message: `All models exhausted for agent ${agent.name}. Please wait a moment and try again.`,
+          })
         }
 
         modelToUse = activeResult.model

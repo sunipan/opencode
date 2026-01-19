@@ -959,12 +959,12 @@ export function Prompt(props: PromptProps) {
                   >
                     {(fb) => (
                       <>
-                        <text flexShrink={0} fg={theme.textMuted}>
-                          {getModelDisplayName(fb().original)}
-                        </text>
-                        <text fg={theme.warning}> → </text>
                         <text flexShrink={0} fg={theme.warning}>
                           {getModelDisplayName(fb().active)}
+                        </text>
+                        <text fg={theme.textMuted}> </text>
+                        <text fg={theme.textMuted}>
+                          {fb().active.providerID.split("/")[0]}
                         </text>
                       </>
                     )}

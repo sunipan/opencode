@@ -790,6 +790,7 @@ export type EventSessionModelFallback = {
       modelID: string
     }
     reason: string
+    subagent?: string
   }
 }
 

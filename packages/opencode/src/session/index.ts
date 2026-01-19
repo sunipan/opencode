@@ -138,6 +138,7 @@ export namespace Session {
           modelID: z.string(),
         }),
         reason: z.string(),
+        subagent: z.string().optional(),
       }),
     ),
     ModelsExhausted: BusEvent.define(

@@ -314,6 +314,9 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         }
 
         case "session.model.fallback": {
+          // Don't store subagent fallbacks in session state (only show toast)
+          if (event.properties.subagent) break
+
           setStore("session_fallback", event.properties.sessionID, {
             original: event.properties.fromModel,
             active: event.properties.toModel,

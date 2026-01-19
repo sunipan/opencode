@@ -148,6 +148,7 @@ export const TaskTool = Tool.define("task", async (ctx) => {
             fromModel: modelList[0],
             toModel: active.model,
             reason: "primary model exhausted",
+            subagent: agent.name,
           })
         }
       } else {

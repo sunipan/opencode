@@ -1740,20 +1740,19 @@ NOTE: At any point in time through this workflow you should feel free to ask the
 
     if (input.command === "fallback") {
       const state = ModelFallback.getState()
-      console.log("[/status] ModelFallback state:", JSON.stringify(state, null, 2))
-      const lines = ["Model Fallback Status:"]
+      let text: string
       if (state.exhausted.length === 0) {
-        lines.push("  No models exhausted")
+        text = "No models currently exhausted"
       } else {
-        lines.push("  Exhausted models:")
-        for (const { key, entry } of state.exhausted) {
-          const remaining = Math.max(0, Math.ceil((entry.refreshAt - Date.now()) / 1000 / 60))
-          lines.push(`    - ${key} (reason: ${entry.reason}, recovers in ${remaining}m)`)
-        }
+        const items = state.exhausted.map(({ key, entry }) => {
+          const mins = Math.max(0, Math.ceil((entry.refreshAt - Date.now()) / 60000))
+          return `${key} - ${entry.reason} (${mins}m)`
+        })
+        text = "Exhausted: " + items.join(", ")
       }
       return createUserMessage({
         sessionID: input.sessionID,
-        parts: [{ type: "text", text: lines.join("\n") }],
+        parts: [{ type: "text", text }],
       })
     }
 

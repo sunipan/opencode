@@ -144,7 +144,7 @@ export const TaskTool = Tool.define("task", async (ctx) => {
         // Publish fallback event if not using primary model
         if (active.index > 0) {
           Bus.publish(Session.Event.ModelFallback, {
-            sessionID: session.id,
+            sessionID: ctx.sessionID,
             fromModel: modelList[0],
             toModel: active.model,
             reason: "primary model exhausted",

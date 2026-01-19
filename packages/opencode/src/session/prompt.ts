@@ -1738,7 +1738,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
       })
     }
 
-    if (input.command === "status") {
+    if (input.command === "fallback") {
       const state = ModelFallback.getState()
       console.log("[/status] ModelFallback state:", JSON.stringify(state, null, 2))
       const lines = ["Model Fallback Status:"]

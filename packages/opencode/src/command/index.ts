@@ -88,8 +88,8 @@ export namespace Command {
         template: "",
         hints: ["$1"],
       },
-      status: {
-        name: "status",
+      fallback: {
+        name: "fallback",
         description: "Show model fallback status (exhausted models)",
         template: "",
         hints: [],

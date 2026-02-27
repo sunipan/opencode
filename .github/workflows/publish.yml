@@ -104,6 +104,7 @@ jobs:
       version: ${{ needs.version.outputs.version }}
 
   build-tauri:
+    if: github.repository == 'anomalyco/opencode'
     needs:
       - build-cli
       - version
@@ -241,6 +242,7 @@ jobs:
           APPLE_API_KEY_PATH: ${{ runner.temp }}/apple-api-key.p8
 
   publish:
+    if: github.repository == 'anomalyco/opencode'
     needs:
       - version
       - build-cli

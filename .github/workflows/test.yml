@@ -8,6 +8,7 @@ on:
   workflow_dispatch:
 jobs:
   unit:
+    if: github.repository == 'anomalyco/opencode'
     name: unit (${{ matrix.settings.name }})
     strategy:
       fail-fast: false
@@ -39,6 +40,7 @@ jobs:
         run: bun turbo test
 
   e2e:
+    if: github.repository == 'anomalyco/opencode'
     name: e2e (${{ matrix.settings.name }})
     needs: unit
     strategy:
@@ -93,7 +95,7 @@ jobs:
     needs:
       - unit
       - e2e
-    if: always()
+    if: github.repository == 'anomalyco/opencode' && always()
     steps:
       - name: Verify upstream test jobs passed
         run: |
